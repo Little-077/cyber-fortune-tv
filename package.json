@@ -1,6 +1,6 @@
 {
   "name": "cyber-fortune-tv",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "赛博抽抽机 — 复古像素电视抽签 / 万能随机决定器 (Electron)",
   "main": "src/main.js",
   "author": "LAZY_M",

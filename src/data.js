@@ -68,19 +68,19 @@
 
   // 求签签库（求签频道专用）：等级 + 权重 + 颜色 + 随机签文
   const FORTUNES = [
-    { level: '大吉', weight: 4, color: '#FFD93D',
+    { level: '大吉', weight: 8, color: '#FFD93D',
       phrases: ['万事顺意，冲就完事了！', '今天宇宙都站你这边 ✨', '想做的事，放手去做吧！', '好运爆棚，去买张彩票？'] },
-    { level: '中吉', weight: 9, color: '#9BE86C',
+    { level: '吉', weight: 15, color: '#9BE86C',
       phrases: ['稳中向好，继续保持～', '小确幸正在路上 🍀', '好运在慢慢靠近你。', '今天值得对自己好一点。'] },
-    { level: '小吉', weight: 15, color: '#7CFCD8',
+    { level: '小吉', weight: 22, color: '#7CFCD8',
       phrases: ['平淡里藏着小惊喜。', '今天适合做点小决定。', '运气在线，别犹豫太久。', '一点点甜，刚刚好。'] },
-    { level: '末吉', weight: 18, color: '#7CC8FC',
+    { level: '末吉', weight: 22, color: '#7CC8FC',
       phrases: ['先苦后甜，耐心一点。', '起步慢，但会好起来的。', '稳住，黎明在后头。', '慢慢来，比较快。'] },
-    { level: '平', weight: 18, color: '#C9C9D4',
+    { level: '平', weight: 25, color: '#C9C9D4',
       phrases: ['平平淡淡才是真。', '今天就，随缘吧～', '不悲不喜，岁月静好。', '保持平常心最重要。'] },
-    { level: '凶', weight: 9, color: '#FF8C6B',
+    { level: '凶', weight: 2, color: '#FF8C6B',
       phrases: ['今天宜低调，明天会更好。', '深呼吸，避避风头吧。', '别强求，缓一缓 🍵', '少说多看，稳一手。'] },
-    { level: '小凶', weight: 4, color: '#FF6B8B',
+    { level: '小凶', weight: 6, color: '#FF6B8B',
       phrases: ['小心脚下，稳一点。', '今天先别做重大决定哦。', '喝杯热水，避避小霉运。', '万事不顺时，早点睡 😴'] },
   ];
 
