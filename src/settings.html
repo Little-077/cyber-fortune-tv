@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>赛博抽抽机 · 设置</title>
+  <link rel="stylesheet" href="settings.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>📺 赛博抽抽机 · 设置</h1>
+  </header>
+
+  <main class="scroll">
+    <section>
+      <h2>主题（点一下立即换肤）</h2>
+      <div id="themeRow" class="theme-row"></div>
+    </section>
+
+    <section>
+      <div class="sec-head">
+        <h2>频道</h2>
+        <button id="addChannel" class="ghost">＋ 新建频道</button>
+      </div>
+      <div id="channelList"></div>
+    </section>
+  </main>
+
+  <div class="footer">
+    <span id="status" class="status"></span>
+    <button id="saveBtn" class="primary">保存频道</button>
+  </div>
+
+  <script src="data.js"></script>
+  <script src="settings.js"></script>
+</body>
+</html>

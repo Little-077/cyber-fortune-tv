@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>赛博抽抽机</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- 整台电视：拖动这里可以移动窗口 -->
+  <div class="stage">
+    <div class="tv" id="tv">
+
+      <!-- 天线（上下拖动可伸缩；待机时缓慢开合）-->
+      <div class="antenna nodrag" id="antenna" title="上下拖动伸缩天线">
+        <div class="rod pivot-left">
+          <span class="rod-line"></span>
+          <span class="rod-tip"></span>
+        </div>
+        <div class="rod pivot-right">
+          <span class="rod-line"></span>
+          <span class="rod-tip"></span>
+        </div>
+        <span class="base"></span>
+      </div>
+
+      <!-- 关闭 / 设置按钮（hover 才明显） -->
+      <button class="close-btn nodrag" id="closeBtn" title="关闭">✕</button>
+      <button class="settings-btn nodrag" id="settingsBtn" title="设置">⚙</button>
+
+      <div class="tv-body">
+        <!-- 左侧：屏幕 -->
+        <div class="screen-wrap nodrag" id="screenWrap">
+          <div class="screen" id="screen">
+            <!-- CRT 画面内容 -->
+            <div class="ch-label" id="chLabel"></div>
+            <div class="crt-content" id="crtContent">
+              <div class="line phrase" id="phrase"></div>
+              <div class="reel" id="reel">・ω・</div>
+              <div class="line hint" id="hint">点我求签</div>
+            </div>
+            <div class="banner" id="banner"></div>
+            <!-- CRT 效果叠层 -->
+            <div class="scanlines"></div>
+            <div class="vignette"></div>
+            <div class="glass"></div>
+            <div class="noise" id="noise"></div>
+          </div>
+        </div>
+
+        <!-- 右侧：控制面板 -->
+        <div class="panel">
+          <div class="brand">LAZY_M<br/>籤</div>
+          <div class="knob knob-a nodrag" id="knobChannel" title="换台（切换频道）"></div>
+          <div class="knob knob-b nodrag" id="knobTheme" title="换肤（切换主题）"></div>
+          <div class="speaker">
+            <span></span><span></span><span></span>
+            <span></span><span></span><span></span>
+            <span></span><span></span><span></span>
+          </div>
+          <button class="power nodrag" id="powerBtn" title="抽一下">
+            <span class="power-dot" id="powerDot"></span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 底座小脚 -->
+      <div class="legs">
+        <span class="leg"></span>
+        <span class="leg"></span>
+      </div>
+    </div>
+  </div>
+
+  <script src="data.js"></script>
+  <script src="renderer.js"></script>
+</body>
+</html>
