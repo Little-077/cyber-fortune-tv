@@ -89,8 +89,10 @@
     return {
       current: 0,
       theme: 0,
+      customThemes: [],   // 用户 DIY 保存的外观，接在预设主题之后
       channels: [
         { id: 'fortune', name: '求签', type: 'fortune' },
+        { id: 'pomodoro', name: '番茄钟', type: 'pomodoro', focusMin: 25, breakMin: 5 },
         {
           id: 'lunch', name: '中午吃什么', type: 'list', note: '就它了！',
           options: ['火锅', '麻辣烫', '黄焖鸡米饭', '沙县小吃', '兰州拉面',

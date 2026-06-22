@@ -99,6 +99,11 @@ html, body {
 }
 .antenna.idle .pivot-left  { animation: breathe-l 3.2s ease-in-out infinite; }
 .antenna.idle .pivot-right { animation: breathe-r 3.2s ease-in-out infinite; }
+/* 心情：开心摆动更快，犯困/睡着变慢 */
+.antenna.happy .pivot-left,
+.antenna.happy .pivot-right  { animation-duration: 1.5s; }
+.antenna.sleepy .pivot-left,
+.antenna.sleepy .pivot-right { animation-duration: 6s; }
 
 /* ===== 电视外壳 ===== */
 .tv-body {
@@ -361,40 +366,67 @@ html, body {
 /* ===== 关闭按钮 ===== */
 .close-btn {
   position: absolute;
-  top: 44px; right: 2px;
+  top: 40px; right: 4px;
   z-index: 20;
-  width: 18px; height: 18px;
+  width: 26px; height: 26px;
   border: none;
   border-radius: 50%;
-  background: rgba(40,30,50,0.35);
+  background: rgba(40,30,50,0.5);
   color: #fff;
-  font-size: 10px;
-  line-height: 18px;
+  font-size: 14px;
+  line-height: 26px;
   cursor: pointer;
-  opacity: 0;
-  transition: opacity 0.2s;
+  opacity: 0.55;                 /* 默认就可见，不必 hover */
+  transition: opacity 0.2s, background 0.2s;
 }
-.tv:hover .close-btn { opacity: 0.8; }
+.tv:hover .close-btn { opacity: 0.9; }
 .close-btn:hover { background: #b23a48; opacity: 1; }
 
 /* ===== 设置按钮 ⚙ ===== */
 .settings-btn {
   position: absolute;
-  top: 44px; right: 24px;
+  top: 40px; right: 36px;
   z-index: 20;
-  width: 18px; height: 18px;
+  width: 26px; height: 26px;
   border: none;
   border-radius: 50%;
-  background: rgba(40,30,50,0.35);
+  background: rgba(40,30,50,0.5);
   color: #fff;
-  font-size: 11px;
-  line-height: 18px;
+  font-size: 15px;
+  line-height: 26px;
   cursor: pointer;
-  opacity: 0;
-  transition: opacity 0.2s;
+  opacity: 0.55;
+  transition: opacity 0.2s, background 0.2s;
 }
-.tv:hover .settings-btn { opacity: 0.8; }
+.tv:hover .settings-btn { opacity: 0.9; }
 .settings-btn:hover { background: var(--power-on); opacity: 1; }
+
+/* ===== 机身右侧凸起实体按钮：纯色块、可按下回弹 ===== */
+.side-btn {
+  position: absolute;
+  right: -9px;            /* 凸出机身右侧 */
+  top: 40px;
+  z-index: 6;
+  width: 16px; height: 44px;
+  border: none;
+  border-radius: 0 7px 7px 0;
+  background: var(--power-on);          /* 纯色块（主题色）*/
+  box-shadow:
+    inset -3px 0 0 rgba(0,0,0,0.32),     /* 右侧暗：立体感 */
+    inset 2px 0 0 rgba(255,255,255,0.28),/* 左侧亮 */
+    2px 2px 3px rgba(0,0,0,0.25);
+  cursor: pointer;
+  transition: right 0.09s ease, box-shadow 0.09s ease, filter 0.09s ease;
+}
+.side-btn:active { right: -5px; }         /* 点击瞬间的轻微下压 */
+/* 录音机式自锁：番茄钟模式时保持按下（凹陷），退出才弹起 */
+.side-btn.pressed {
+  right: -1px;                             /* 几乎缩回机身 → 明显「按进去了」*/
+  box-shadow:
+    inset 4px 0 0 rgba(0,0,0,0.34),        /* 反向高光 → 看起来嵌进去 */
+    inset -2px 0 0 rgba(255,255,255,0.1);
+  filter: brightness(0.8);
+}
 
 /* ===== 动画状态 ===== */
 /* 滚动时整机轻微抖动 */
@@ -420,3 +452,90 @@ html, body {
   50% { transform: translateY(-3px); }
 }
 .reel.idle { animation: float 2.4s ease-in-out infinite; }
+
+/* ===== 心情：犯困 / 睡着 / 惊醒 的明显视觉 ===== */
+/* 屏幕亮度：犯困先暗一档，睡着更暗 */
+.screen { transition: filter 0.8s ease; }
+.screen.drowsy { filter: brightness(0.78) saturate(0.9); }
+.screen.dim    { filter: brightness(0.4) saturate(0.8); }
+
+/* 睡着：天线耷拉下垂（盖过开合动画）*/
+.antenna.asleep .pivot-left  { animation: none; transform: rotate(-62deg) translateX(-2px); transition: transform 0.7s ease; }
+.antenna.asleep .pivot-right { animation: none; transform: rotate(62deg)  translateX(2px);  transition: transform 0.7s ease; }
+
+/* 睡着：表情轻轻起伏（呼吸）*/
+@keyframes sleepBreath { 0%,100% { transform: scale(1); } 50% { transform: scale(1.06); } }
+.reel.sleeping { animation: sleepBreath 3s ease-in-out infinite; }
+
+/* 睡着：飘动的 Zzz */
+.zzz {
+  position: absolute;
+  top: 22px; right: 28px;
+  z-index: 4;
+  font-size: 16px;
+  font-weight: bold;
+  letter-spacing: 2px;
+  color: var(--phosphor);
+  text-shadow: 0 0 6px currentColor;
+  opacity: 0;
+  pointer-events: none;
+}
+.screen.dim .zzz { animation: zzzFloat 2.2s ease-in-out infinite; }
+@keyframes zzzFloat {
+  0%   { opacity: 0;   transform: translateY(8px)  scale(0.7); }
+  35%  { opacity: 0.9; }
+  100% { opacity: 0;   transform: translateY(-16px) scale(1.15); }
+}
+
+/* 惊醒：屏幕闪一下 + 整机抖一下 */
+@keyframes wakeFlash { 0% { filter: brightness(2.2) saturate(1.3); } 100% { filter: brightness(1) saturate(1); } }
+.screen.wake { animation: wakeFlash 0.45s ease-out; }
+@keyframes jolt {
+  0%,100% { transform: translate(0,0); }
+  20% { transform: translate(-3px, 2px); }
+  45% { transform: translate(3px, -2px); }
+  70% { transform: translate(-2px, 1px); }
+}
+.tv.jolt { animation: jolt 0.3s ease-out; }
+
+/* ===== 番茄钟到点庆祝 ===== */
+/* 整机大幅抖动 */
+@keyframes bigShake {
+  0%,100% { transform: translate(0,0) rotate(0); }
+  15% { transform: translate(-5px,3px) rotate(-1.2deg); }
+  30% { transform: translate(5px,-3px) rotate(1.2deg); }
+  45% { transform: translate(-4px,-2px) rotate(-1deg); }
+  60% { transform: translate(4px,3px) rotate(1deg); }
+  80% { transform: translate(-2px,1px) rotate(0); }
+}
+.tv.party { animation: bigShake 0.55s ease-in-out 2; }
+/* 全屏闪光 */
+@keyframes partyFlash {
+  0%,100% { filter: brightness(1) saturate(1); }
+  20% { filter: brightness(2.6) saturate(1.5); }
+  45% { filter: brightness(1); }
+  65% { filter: brightness(2.3) saturate(1.4); }
+  85% { filter: brightness(1.1); }
+}
+.screen.party { animation: partyFlash 0.9s ease-out; }
+/* 天线乱晃 */
+@keyframes wiggleL { 0%,100% { transform: rotate(-16deg) translateX(-2px); } 50% { transform: rotate(-44deg) translateX(-2px); } }
+@keyframes wiggleR { 0%,100% { transform: rotate(16deg) translateX(2px); }  50% { transform: rotate(44deg) translateX(2px); } }
+.antenna.party .pivot-left  { animation: wiggleL 0.16s linear infinite !important; }
+.antenna.party .pivot-right { animation: wiggleR 0.16s linear infinite !important; }
+/* 撒花 */
+.confetti {
+  position: absolute;
+  top: -12px;
+  width: 6px; height: 6px;
+  border-radius: 1px;
+  z-index: 6;
+  pointer-events: none;
+  animation-name: confettiFall;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+@keyframes confettiFall {
+  0%   { transform: translate(0, 0) rotate(0); opacity: 1; }
+  100% { transform: translate(var(--dx, 0), 200px) rotate(560deg); opacity: 0.85; }
+}

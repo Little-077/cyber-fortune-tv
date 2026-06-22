@@ -28,7 +28,7 @@ function broadcastConfig(cfg, exceptWC) {
 }
 
 // 100% 缩放时的基准窗口尺寸；滚轮缩放在此基础上按比例伸缩
-const BASE_W = 360;
+const BASE_W = 384;   // 略宽，给机身右侧凸起按钮留出空间
 const MIN_SCALE = 0.45;
 const MAX_SCALE = 1.8;
 let scale = 0.8;               // 默认略小一点（之前“好大一个”）
@@ -109,6 +109,11 @@ function openSettings() {
 // ===== IPC =====
 ipcMain.on('app:quit', () => app.quit());
 ipcMain.on('settings:open', () => openSettings());
+
+// DIY 预览：转发给电视主窗口实时套用
+ipcMain.on('theme:preview', (_e, obj) => {
+  if (win && !win.isDestroyed()) win.webContents.send('theme:preview', obj);
+});
 
 ipcMain.handle('config:get', () => readConfig());
 ipcMain.on('config:save', (e, cfg) => {

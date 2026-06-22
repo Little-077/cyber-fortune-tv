@@ -10,6 +10,14 @@ const KAOMOJI = [
 ];
 const BLINK = '・_・';
 
+// 心情表情集：开心 / 普通 / 犯困 / 睡着
+const FACE = {
+  happy:  ['＾▽＾', '◕ω◕', '☆▽☆', '✧ω✧', '＞ω＜', '・◡・', '◍•ω•◍'],
+  normal: KAOMOJI,
+  drowsy: ['˘ω˘', '－ω－', 'ᴗωᴗ', '－﹏－', '≖_≖'],
+  asleep: ['－ω－', '＿ω＿', '￣ω￣', '－ ﹏ －'],
+};
+
 // ===== DOM =====
 const tv         = document.getElementById('tv');
 const screen     = document.getElementById('screen');
@@ -26,11 +34,22 @@ const antenna    = document.getElementById('antenna');
 const knobChannel = document.getElementById('knobChannel');
 const knobTheme   = document.getElementById('knobTheme');
 const crtContent = document.getElementById('crtContent');
+const pomoBtn    = document.getElementById('pomoBtn');
 
 let config = defaultConfig();
 let rolling = false;
 let showingResult = false;   // 是否停留在结果（点蓝灯复位）
 let idleTimer = null;
+
+// 心情/发呆状态
+let lastActive = Date.now();
+let currentMood = null;
+let faceTick = 0;
+
+// 番茄钟状态（全局：切台也继续走，到点提醒）
+let pomo = { phase: 'idle', remain: 0, running: false, timer: null };
+// 庆祝状态
+let celebrating = false, celebrateTimer = null, celebrateEnd = null;
 
 // 天线伸缩状态（px）：可拉得很长（约 5 倍）
 const ROD_MIN = 40, ROD_MAX = 420, ROD_LUCK_FROM = 130;
@@ -73,9 +92,10 @@ function persist() {
   if (window.tvapi && window.tvapi.saveConfig) window.tvapi.saveConfig(config);
 }
 
-// ===== 主题 =====
-function applyTheme(idx) {
-  const t = THEMES[clamp(idx, 0, THEMES.length - 1)];
+// ===== 主题（预设 + 用户自定义）=====
+function allThemes() { return THEMES.concat(config.customThemes || []); }
+function applyThemeObj(t) {
+  if (!t) return;
   const r = document.documentElement.style;
   r.setProperty('--phosphor', t.phosphor);
   r.setProperty('--s1', t.s1); r.setProperty('--s2', t.s2); r.setProperty('--s3', t.s3);
@@ -87,6 +107,10 @@ function applyTheme(idx) {
   r.setProperty('--knob-b', t.knobB || t.border);
   r.setProperty('--leg', t.leg || t.border);
   r.setProperty('--ink', t.ink || t.border);
+}
+function applyTheme(idx) {
+  const list = allThemes();
+  applyThemeObj(list[clamp(idx, 0, list.length - 1)]);
 }
 
 // 旋钮按「频道/主题数量」等分 360°。用累计角度保证点击时始终顺时针转动
@@ -102,10 +126,19 @@ function setKnob(el, deg, animate) {
     el.style.transition = prev || '';
   }
 }
+// 可换台的频道（番茄钟不参与旋钮换台，由专属按钮进入）
+function rotatables() {
+  const list = [];
+  config.channels.forEach((c, i) => { if (c.type !== 'pomodoro') list.push(i); });
+  return list;
+}
 // 绝对同步到当前索引（瞬间）
 function syncKnobs() {
-  knobAngle.channel = (config.current / Math.max(1, config.channels.length)) * 360;
-  knobAngle.theme = ((config.theme || 0) / Math.max(1, THEMES.length)) * 360;
+  const list = rotatables();
+  let pos = list.indexOf(config.current);
+  if (pos < 0) pos = 0;
+  knobAngle.channel = (pos / Math.max(1, list.length)) * 360;
+  knobAngle.theme = ((config.theme || 0) / Math.max(1, allThemes().length)) * 360;
   setKnob(knobChannel, knobAngle.channel, false);
   setKnob(knobTheme, knobAngle.theme, false);
 }
@@ -154,33 +187,241 @@ function updateLabel() {
   chLabel.textContent = `CH${config.current + 1} · ${ch.name}`;
 }
 
-// ===== 待机：颜文字 + 天线开合 =====
+// 番茄钟侧键自锁：在番茄钟频道时保持按下，离开才弹起
+function updatePomoBtn() {
+  if (pomoBtn) pomoBtn.classList.toggle('pressed', curChannel().type === 'pomodoro');
+}
+
+// ===== 心情 / 发呆 =====
+function moodNow() {
+  if (pomo.running) return 'happy';            // 计时中保持清醒
+  const t = (Date.now() - lastActive) / 1000;
+  if (t < 50) return 'happy';
+  if (t < 110) return 'normal';
+  if (t < 190) return 'drowsy';
+  return 'asleep';                             // 约 3 分钟没理它就睡
+}
+function idleHint() {
+  return curChannel().type === 'fortune' ? '点我求签' : '点我决定吧';
+}
+function applyMoodVisual(mood) {
+  antenna.classList.remove('happy', 'sleepy', 'asleep');
+  screen.classList.remove('dim', 'drowsy');
+  reel.classList.remove('sleeping');
+  if (mood === 'happy') {
+    antenna.classList.add('happy'); hint.textContent = idleHint();
+  } else if (mood === 'drowsy') {
+    antenna.classList.add('sleepy'); screen.classList.add('drowsy'); hint.textContent = '有点困…';
+  } else if (mood === 'asleep') {
+    antenna.classList.add('sleepy', 'asleep'); screen.classList.add('dim');
+    reel.classList.add('sleeping'); hint.textContent = 'Zzz…';
+  } else {
+    hint.textContent = idleHint();
+  }
+}
+function applyMoodFace() {
+  const set = FACE[currentMood] || KAOMOJI;
+  reel.textContent = rand(set);
+  reel.style.color = phosphor();
+}
+function idleTick() {
+  if (rolling || showingResult || celebrating) return;
+  if (curChannel().type === 'pomodoro') return;
+  if (pomo.running) lastActive = Date.now();
+  const mood = moodNow();
+  if (mood !== currentMood) {            // 切换心情：立即换脸 + 视觉
+    currentMood = mood;
+    applyMoodVisual(mood);
+    applyMoodFace();
+    faceTick = 0;
+    return;
+  }
+  if (mood === 'asleep') return;         // 睡着：不换脸、不眨眼
+  faceTick++;
+  if (faceTick % 3 !== 0) return;
+  if (mood !== 'happy' && Math.random() < 0.4) {  // 偶尔眨眼
+    const cur = reel.textContent;
+    reel.textContent = BLINK;
+    setTimeout(() => { if (!rolling && !showingResult && currentMood === mood) reel.textContent = cur; }, 140);
+  } else {
+    applyMoodFace();
+  }
+}
+// 任意互动：刷新活跃时间；若在犯困/打瞌睡则明显惊醒
+function markActive() {
+  const wasSleep = (currentMood === 'drowsy' || currentMood === 'asleep');
+  lastActive = Date.now();
+  if (wasSleep && curChannel().type !== 'pomodoro' && !rolling && !showingResult && !celebrating) {
+    currentMood = 'happy';
+    applyMoodVisual('happy');
+    reel.classList.remove('sleeping');
+    reel.classList.add('idle', 'kaomoji');
+    reel.style.fontSize = '';
+    reel.textContent = '⊙▽⊙';            // 惊醒：吓一跳
+    reel.style.color = phosphor();
+    faceTick = 0;
+    // 抖一下 + 屏幕闪一下 + 醒来音
+    tv.classList.remove('jolt'); void tv.offsetWidth; tv.classList.add('jolt');
+    screen.classList.remove('wake'); void screen.offsetWidth; screen.classList.add('wake');
+    beep(700, 0.05, 'sine', 0.04);
+    setTimeout(() => beep(980, 0.06, 'sine', 0.04), 70);
+    setTimeout(() => { if (currentMood === 'happy' && !rolling && !showingResult) applyMoodFace(); }, 520);
+  }
+}
+
+// ===== 番茄钟 =====
+function pomoCh() { return config.channels.find(c => c.type === 'pomodoro'); }
+function pomoSecs() {
+  const ch = pomoCh() || {};
+  return { focus: (ch.focusMin || 25) * 60, brk: (ch.breakMin || 5) * 60 };
+}
+function fmtTime(sec) {
+  const m = Math.floor(sec / 60), s = sec % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+function renderPomo() {
+  if (curChannel().type !== 'pomodoro') return;
+  clearInterval(idleTimer);
+  antenna.classList.remove('happy', 'sleepy'); antenna.classList.add('idle');
+  screen.classList.remove('dim');
+  reel.classList.remove('kaomoji', 'idle');
+  reel.style.fontSize = '42px';
+  reel.style.color = phosphor();
+  const t = pomo.phase === 'idle' ? pomoSecs().focus : pomo.remain;
+  reel.textContent = fmtTime(t);
+  phrase.textContent = pomo.phase === 'break' ? '☕ 休息' : (pomo.phase === 'focus' ? '🍅 专注' : '🍅 番茄钟');
+  phrase.style.color = phosphor();
+  phrase.style.opacity = 0.8;
+  if (pomo.phase === 'idle') hint.textContent = '点我开始专注';
+  else hint.textContent = pomo.running ? '进行中 · 点暂停' : '已暂停 · 点继续';
+  hint.style.opacity = 0.6;
+  powerBtn.classList.toggle('on', pomo.running);
+  updateLabel();
+}
+function pomoRun() {
+  clearInterval(pomo.timer);
+  renderPomo();
+  pomo.timer = setInterval(() => {
+    pomo.remain--;
+    renderPomo();
+    if (pomo.remain <= 0) {
+      clearInterval(pomo.timer);
+      pomo.running = false;
+      pomoComplete(pomo.phase);
+    }
+  }, 1000);
+}
+function pomoStartPhase(phase) {
+  const s = pomoSecs();
+  pomo.phase = phase;
+  pomo.remain = phase === 'focus' ? s.focus : s.brk;
+  pomo.running = true;
+  beep(523, 0.07, 'sine', 0.05);
+  pomoRun();
+}
+function pomoToggle() {
+  if (pomo.phase === 'idle') { pomoStartPhase('focus'); return; }
+  if (pomo.running) { pomo.running = false; clearInterval(pomo.timer); beep(300, 0.05, 'sine', 0.04); renderPomo(); }
+  else { pomo.running = true; beep(500, 0.05, 'sine', 0.04); pomoRun(); }
+}
+function pomoReset() {
+  clearInterval(pomo.timer);
+  pomo = { phase: 'idle', remain: 0, running: false, timer: null };
+  beep(220, 0.06, 'sawtooth', 0.03);
+  renderPomo();
+}
+// 到点庆祝：欢快音 + 全屏闪 + 整机抖 + 天线乱晃 + 撒花
+function fanfare() {
+  const notes = [523, 659, 784, 1047, 784, 1047, 1319];
+  notes.forEach((f, i) => setTimeout(() => beep(f, 0.13, 'square', 0.06), i * 95));
+}
+function spawnConfetti() {
+  const colors = ['#FFD93D', '#9BE86C', '#7CFCD8', '#7CC8FC', '#FF8C6B', '#FF6B8B', '#E98BFF'];
+  for (let i = 0; i < 20; i++) {
+    const p = document.createElement('div');
+    p.className = 'confetti';
+    p.style.left = Math.random() * 100 + '%';
+    p.style.background = colors[i % colors.length];
+    p.style.setProperty('--dx', (Math.random() * 50 - 25) + 'px');
+    p.style.animationDuration = (1.1 + Math.random() * 0.8) + 's';
+    p.style.animationDelay = (Math.random() * 0.25) + 's';
+    screen.appendChild(p);
+    setTimeout(() => p.remove(), 2300);
+  }
+}
+const CELEBRATE_MS = 17000;            // 庆祝持续约 17 秒
+function celebrate(onDone) {
+  celebrating = true;
+  celebrateEnd = onDone;
+  antenna.classList.add('party');      // 天线全程乱晃
+  fanfare();
+  const start = Date.now();
+  let n = 0;
+  (function pulse() {
+    if (!celebrating) return;
+    if (Date.now() - start >= CELEBRATE_MS) { endCelebrate(); return; }
+    spawnConfetti();                                       // 持续撒花
+    if (n % 3 === 0) { screen.classList.remove('party'); void screen.offsetWidth; screen.classList.add('party'); } // 闪光脉冲
+    if (n % 4 === 0) { tv.classList.remove('party'); void tv.offsetWidth; tv.classList.add('party'); }             // 抖动脉冲
+    if (n > 0 && n % 7 === 0) fanfare();                   // 分几次再奏乐
+    n++;
+    celebrateTimer = setTimeout(pulse, 800);
+  })();
+}
+function endCelebrate() {
+  if (!celebrating) return;
+  celebrating = false;
+  clearTimeout(celebrateTimer); celebrateTimer = null;
+  tv.classList.remove('party');
+  screen.classList.remove('party');
+  antenna.classList.remove('party');
+  const done = celebrateEnd; celebrateEnd = null;
+  if (done) done();
+}
+function pomoComplete(phase) {
+  // 屏幕进入「完成」庆祝态（撒花/闪光持续期间一直显示）
+  reel.classList.remove('kaomoji', 'idle', 'sleeping');
+  reel.style.fontSize = '46px';
+  reel.textContent = '🎉';
+  reel.style.color = phosphor();
+  phrase.textContent = phase === 'focus' ? '专注完成！' : '休息结束！';
+  phrase.style.color = phosphor();
+  phrase.style.opacity = 0.95;
+  hint.textContent = phase === 'focus' ? '即将开始休息…' : '准备好再战！';
+  hint.style.opacity = 0.6;
+  celebrate(() => {
+    if (phase === 'focus') pomoStartPhase('break');   // 庆祝结束后开始休息
+    else pomo.phase = 'idle';
+    if (curChannel().type === 'pomodoro') renderPomo();
+    else goIdle();                                     // 不在番茄钟台则恢复表情
+  });
+}
+
+// ===== 待机：番茄钟频道显示计时；其它频道显示心情表情 =====
 function goIdle() {
   rolling = false;
   showingResult = false;
+  updatePomoBtn();
+  if (curChannel().type === 'pomodoro') { clearInterval(idleTimer); renderPomo(); return; }
   reel.classList.add('idle', 'kaomoji');
   antenna.classList.add('idle');
   reel.style.fontSize = '';            // 交回 .kaomoji 的字号
-  reel.style.color = phosphor();
-  reel.textContent = rand(KAOMOJI);
   phrase.style.opacity = 0;
-  const ch = curChannel();
-  hint.textContent = ch.type === 'fortune' ? '点我求签' : '点我决定吧';
   hint.style.opacity = 0.55;
   powerBtn.classList.remove('on');
   updateLabel();
-
+  currentMood = null;                  // 强制下次 tick 重新评估心情并立即设脸
   clearInterval(idleTimer);
-  idleTimer = setInterval(() => {
-    if (rolling || showingResult) return;
-    if (Math.random() < 0.4) {
-      const cur = reel.textContent;
-      reel.textContent = BLINK;
-      setTimeout(() => { if (!rolling && !showingResult) reel.textContent = cur; }, 140);
-    } else {
-      reel.textContent = rand(KAOMOJI);
-    }
-  }, 3200);
+  idleTick();
+  idleTimer = setInterval(idleTick, 1000);
+}
+
+// 首次/迁移：确保内置「求签」「番茄钟」频道存在
+function ensureBuiltins(cfg) {
+  if (!cfg.channels.some(c => c.type === 'fortune'))
+    cfg.channels.unshift({ id: 'fortune', name: '求签', type: 'fortune' });
+  if (!cfg.channels.some(c => c.type === 'pomodoro'))
+    cfg.channels.push({ id: 'pomodoro', name: '番茄钟', type: 'pomodoro', focusMin: 25, breakMin: 5 });
 }
 
 // ===== 抽签 / 抽选（通用：求签 or 列表）=====
@@ -253,25 +494,56 @@ function lockResult(result) {
   hint.style.opacity = 0.55;
 }
 
-// ===== 换台 / 换肤 =====
+// ===== 换台（跳过番茄钟）/ 换肤 =====
+let prevChannel = 0;   // 进番茄钟前所在频道，便于一键返回
+
 function switchChannel(delta) {
+  if (celebrating) endCelebrate();
   if (rolling) return;
-  const n = config.channels.length;
-  config.current = (config.current + delta + n) % n;
+  const list = rotatables();
+  if (!list.length) return;
+  let pos = list.indexOf(config.current);
+  if (pos < 0) pos = (delta > 0 ? -1 : 0);   // 当前在番茄钟时，下一步落到首/末
+  const next = (pos + delta + list.length) % list.length;
+  config.current = list[next];
   persist();
-  knobAngle.channel += (delta * 360) / n;   // 累计角度 → 始终顺时针
+  knobAngle.channel += (delta * 360) / list.length;   // 累计角度 → 始终顺时针
   setKnob(knobChannel, knobAngle.channel, true);
-  updateLabel();                 // 顶部标签立即更新为新频道
-  // 换台雪花一闪
+  updateLabel();
+  updatePomoBtn();               // 离开番茄钟 → 侧键弹起
   screen.classList.add('rolling');
   beep(180, 0.05, 'sawtooth', 0.03);
   setTimeout(() => screen.classList.remove('rolling'), 220);
-  // 频道名出现在表情位置，消失后再显现表情
+  showBanner(curChannel().name, goIdle);
+}
+
+// 🍅 专属按钮：一键进入番茄钟；再按返回原频道
+function togglePomodoro() {
+  if (celebrating) endCelebrate();
+  markActive();
+  const pi = config.channels.findIndex(c => c.type === 'pomodoro');
+  if (pi < 0 || rolling) return;
+  if (curChannel().type === 'pomodoro') {
+    let back = clamp(prevChannel, 0, config.channels.length - 1);
+    if (!config.channels[back] || config.channels[back].type === 'pomodoro') back = rotatables()[0] ?? 0;
+    config.current = back;
+    syncKnobs();
+  } else {
+    prevChannel = config.current;
+    config.current = pi;
+  }
+  persist();
+  updateLabel();
+  updatePomoBtn();               // 进/出番茄钟 → 侧键自锁/弹起
+  beep(660, 0.05, 'sine', 0.04);
+  screen.classList.add('rolling');
+  setTimeout(() => screen.classList.remove('rolling'), 200);
   showBanner(curChannel().name, goIdle);
 }
 function switchTheme(delta) {
+  if (celebrating) endCelebrate();
   if (rolling) return;
-  const n = THEMES.length;
+  const n = allThemes().length;
   config.theme = ((config.theme || 0) + delta + n) % n;
   applyTheme(config.theme);
   persist();
@@ -286,10 +558,18 @@ function switchTheme(delta) {
 }
 
 // ===== 事件绑定 =====
-// 屏幕：始终是「抽 / 再抽一次」
-function onScreenClick() { if (!rolling) draw(); }
-// 电源键：待机抽；结果时复位
+// 屏幕：番茄钟频道=开始/暂停；其它=抽 / 再抽一次
+function onScreenClick() {
+  if (celebrating) { endCelebrate(); return; }   // 庆祝中点一下提前结束
+  markActive();
+  if (curChannel().type === 'pomodoro') { pomoToggle(); return; }
+  if (!rolling) draw();
+}
+// 电源键：番茄钟频道=重置；其它=待机抽 / 结果复位
 function onPowerClick() {
+  if (celebrating) { endCelebrate(); return; }
+  markActive();
+  if (curChannel().type === 'pomodoro') { pomoReset(); return; }
   if (rolling) return;
   if (showingResult) goIdle();
   else draw();
@@ -297,8 +577,9 @@ function onPowerClick() {
 screenWrap.addEventListener('click', onScreenClick);
 powerBtn.addEventListener('click', (e) => { e.stopPropagation(); onPowerClick(); });
 
-knobChannel.addEventListener('click', (e) => { e.stopPropagation(); if (!rolling) switchChannel(1); });
-knobTheme.addEventListener('click', (e) => { e.stopPropagation(); switchTheme(1); });
+knobChannel.addEventListener('click', (e) => { e.stopPropagation(); markActive(); if (!rolling) switchChannel(1); });
+knobTheme.addEventListener('click', (e) => { e.stopPropagation(); markActive(); switchTheme(1); });
+pomoBtn.addEventListener('click', (e) => { e.stopPropagation(); togglePomodoro(); });
 
 settingsBtn.addEventListener('click', (e) => {
   e.stopPropagation();
@@ -331,6 +612,7 @@ function setRodLen(px) {
 antenna.addEventListener('mousedown', (e) => {
   e.preventDefault();
   e.stopPropagation();
+  markActive();
   const startY = e.screenY;
   const startLen = rodLen;
   function onMove(ev) { setRodLen(startLen + (startY - ev.screenY)); }
@@ -348,15 +630,34 @@ window.addEventListener('wheel', (e) => {
   if (window.tvapi && window.tvapi.zoom) window.tvapi.zoom(e.deltaY < 0 ? 0.06 : -0.06);
 }, { passive: false });
 
+// 鼠标靠近/移动到电视上 = 唤醒（让它对你的存在有反应）
+let _lastMove = 0;
+window.addEventListener('mousemove', () => {
+  const n = Date.now();
+  lastActive = n;
+  if (n - _lastMove > 300) { _lastMove = n; markActive(); }
+});
+
 // ===== 设置面板保存后，热更新配置 =====
 if (window.tvapi && window.tvapi.onConfigChanged) {
   window.tvapi.onConfigChanged((cfg) => {
     if (!cfg) return;
     config = cfg;
+    ensureBuiltins(config);
+    config.customThemes = config.customThemes || [];
     config.current = clamp(config.current || 0, 0, config.channels.length - 1);
-    applyTheme(config.theme || 0);
+    config.theme = clamp(config.theme || 0, 0, allThemes().length - 1);
+    applyTheme(config.theme);
     syncKnobs();
     if (!rolling) goIdle();
+  });
+}
+
+// 设置面板 DIY 实时预览（不落盘，仅临时套用）
+if (window.tvapi && window.tvapi.onThemePreview) {
+  window.tvapi.onThemePreview((obj) => {
+    applyThemeObj(obj);
+    if (!rolling && !showingResult) reel.style.color = phosphor();
   });
 }
 
@@ -369,12 +670,16 @@ async function init() {
   if (!cfg || !cfg.channels || !cfg.channels.length) {
     cfg = defaultConfig();
     config = cfg;
-    persist();
   } else {
     config = cfg;
   }
+  config.customThemes = config.customThemes || [];
+  const before = config.channels.length;
+  ensureBuiltins(config);              // 老配置迁移：补上「番茄钟」等内置频道
+  if (config.channels.length !== before || !cfg) persist();
   config.current = clamp(config.current || 0, 0, config.channels.length - 1);
-  applyTheme(config.theme || 0);
+  config.theme = clamp(config.theme || 0, 0, allThemes().length - 1);
+  applyTheme(config.theme);
   syncKnobs();
   setRodLen(rodLen);
   goIdle();

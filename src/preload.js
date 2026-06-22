@@ -13,6 +13,9 @@ contextBridge.exposeInMainWorld('tvapi', {
   saveConfig: (cfg) => ipcRenderer.send('config:save', cfg),
   onConfigChanged: (cb) => ipcRenderer.on('config:changed', (_e, cfg) => cb(cfg)),
   openSettings: () => ipcRenderer.send('settings:open'),
+  // DIY 外观实时预览（不落盘）
+  previewTheme: (obj) => ipcRenderer.send('theme:preview', obj),
+  onThemePreview: (cb) => ipcRenderer.on('theme:preview', (_e, obj) => cb(obj)),
 
   // 标记当前是否运行在 Electron 里（浏览器预览时为 false）
   isElectron: true,

@@ -8,26 +8,38 @@
 <body>
   <header class="topbar">
     <h1>📺 赛博抽抽机 · 设置</h1>
+    <nav class="tabs">
+      <button class="tab active" data-tab="channels">频道</button>
+      <button class="tab" data-tab="focus">专注</button>
+      <button class="tab" data-tab="appearance">外观</button>
+    </nav>
   </header>
 
   <main class="scroll">
-    <section>
-      <h2>主题（点一下立即换肤）</h2>
-      <div id="themeRow" class="theme-row"></div>
-    </section>
-
-    <section>
+    <section class="page" data-page="channels">
       <div class="sec-head">
         <h2>频道</h2>
         <button id="addChannel" class="ghost">＋ 新建频道</button>
       </div>
       <div id="channelList"></div>
     </section>
+
+    <section class="page" data-page="focus" hidden>
+      <h2>专注 · 番茄钟</h2>
+      <div id="focusBox"></div>
+    </section>
+
+    <section class="page" data-page="appearance" hidden>
+      <h2>主题（点一下立即换肤）</h2>
+      <div id="themeRow" class="theme-row"></div>
+      <h2 style="margin-top: 22px;">自定义外观 · DIY</h2>
+      <div id="diyBox"></div>
+    </section>
   </main>
 
   <div class="footer">
     <span id="status" class="status"></span>
-    <button id="saveBtn" class="primary">保存频道</button>
+    <button id="saveBtn" class="primary">保存</button>
   </div>
 
   <script src="data.js"></script>
