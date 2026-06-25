@@ -1,5 +1,18 @@
 // ===== 赛博抽抽机 · 渲染进程 =====
-const { THEMES, FORTUNES, defaultConfig } = window.APP_DATA;
+const { THEMES, FORTUNES, I18N, defaultConfig } = window.APP_DATA;
+
+// 多语言
+let lang = 'zh';
+let T = I18N.zh;
+function setLang(l) { lang = (l === 'en') ? 'en' : 'zh'; T = I18N[lang]; }
+function fLevel(f) { return lang === 'en' ? f.levelEn : f.level; }
+function fPhrase(f) { return rand(lang === 'en' ? f.phrasesEn : f.phrases); }
+function themeNameOf(t) { return (lang === 'en' && t.nameEn) ? t.nameEn : t.name; }
+function chName(ch) {
+  if (ch.type === 'fortune') return T.chFortune;
+  if (ch.type === 'pomodoro') return T.chPomodoro;
+  return ch.name;
+}
 
 // 待机颜文字：不带两侧括号（电视边框本身就是脸的轮廓）。含 3 字与 5 字
 const KAOMOJI = [
@@ -194,7 +207,7 @@ function showBanner(text, after) {
 // ===== 频道标签 =====
 function updateLabel() {
   const ch = curChannel();
-  chLabel.textContent = `CH${config.current + 1} · ${ch.name}`;
+  chLabel.textContent = `CH${config.current + 1} · ${chName(ch)}`;
 }
 
 // 番茄钟侧键自锁：在番茄钟频道时保持按下，离开才弹起
@@ -212,7 +225,7 @@ function moodNow() {
   return 'asleep';                             // 约 3 分钟没理它就睡
 }
 function idleHint() {
-  return curChannel().type === 'fortune' ? '点我求签' : '点我决定吧';
+  return curChannel().type === 'fortune' ? T.hintFortune : T.hintList;
 }
 function applyMoodVisual(mood) {
   antenna.classList.remove('happy', 'sleepy', 'asleep');
@@ -221,10 +234,10 @@ function applyMoodVisual(mood) {
   if (mood === 'happy') {
     antenna.classList.add('happy'); hint.textContent = idleHint();
   } else if (mood === 'drowsy') {
-    antenna.classList.add('sleepy'); screen.classList.add('drowsy'); hint.textContent = '有点困…';
+    antenna.classList.add('sleepy'); screen.classList.add('drowsy'); hint.textContent = T.sleepy;
   } else if (mood === 'asleep') {
     antenna.classList.add('sleepy', 'asleep'); screen.classList.add('dim');
-    reel.classList.add('sleeping'); hint.textContent = 'Zzz…';
+    reel.classList.add('sleeping'); hint.textContent = T.zzz;
   } else {
     hint.textContent = idleHint();
   }
@@ -317,11 +330,11 @@ function renderPomo() {
   reel.style.color = phosphor();
   const t = pomo.phase === 'idle' ? pomoSecs().focus : pomo.remain;
   reel.textContent = fmtTime(t);
-  phrase.textContent = pomo.phase === 'break' ? '☕ 休息' : (pomo.phase === 'focus' ? '🍅 专注' : '🍅 番茄钟');
+  phrase.textContent = pomo.phase === 'break' ? T.pBreak : (pomo.phase === 'focus' ? T.pFocus : T.pPomo);
   phrase.style.color = phosphor();
   phrase.style.opacity = 0.8;
-  if (pomo.phase === 'idle') hint.textContent = '点我开始专注';
-  else hint.textContent = pomo.running ? '进行中 · 点暂停' : '已暂停 · 点继续';
+  if (pomo.phase === 'idle') hint.textContent = T.pomoStartHint;
+  else hint.textContent = pomo.running ? T.pomoRunHint : T.pomoPauseHint;
   hint.style.opacity = 0.6;
   powerBtn.classList.toggle('on', pomo.running);
   updateLabel();
@@ -413,10 +426,12 @@ function pomoComplete(phase) {
   reel.style.fontSize = '46px';
   reel.textContent = '🎉';
   reel.style.color = phosphor();
-  phrase.textContent = phase === 'focus' ? '专注完成！' : '休息结束！';
+  phrase.textContent = phase === 'focus' ? T.focusDone : T.breakDone;
   phrase.style.color = phosphor();
   phrase.style.opacity = 0.95;
-  hint.textContent = phase === 'focus' ? '即将开始休息…' : '准备好再战！';
+  hint.textContent = phase === 'focus'
+    ? (lang === 'en' ? 'break starting…' : '即将开始休息…')
+    : (lang === 'en' ? 'ready to go again!' : '准备好再战！');
   hint.style.opacity = 0.6;
   celebrate(() => {
     if (phase === 'focus') pomoStartPhase('break');   // 庆祝结束后开始休息
@@ -452,11 +467,11 @@ function claudeScreen() {
   if (claudeState === 'waiting') {
     writer.classList.remove('show');
     eyes.classList.add('show');
-    hint.textContent = 'Claude 等你确认…';
+    hint.textContent = T.cWaiting;
   } else {
     eyes.classList.remove('show');
     writer.classList.add('show');
-    hint.textContent = 'Claude 工作中…';
+    hint.textContent = T.cWorking;
   }
   hint.style.opacity = 0.8;
 }
@@ -494,7 +509,7 @@ function claudeDone() {
     reel.textContent = '＾▽＾';
     screen.classList.remove('dim', 'drowsy');
     phrase.style.opacity = 0;
-    hint.textContent = '✓ 完成！'; hint.style.opacity = 0.85;
+    hint.textContent = T.cDone; hint.style.opacity = 0.85;
   }
 
   clearTimeout(claudeDone._t);
@@ -565,6 +580,42 @@ function ensureBuiltins(cfg) {
     cfg.channels.push({ id: 'pomodoro', name: '番茄钟', type: 'pomodoro', focusMin: 25, breakMin: 5 });
 }
 
+// ===== 列表频道：前缀分类 + 动态权重 =====
+// 前缀：+ 爱吃（久没中提概率）  - 难吃（中了降概率）  无前缀=普通
+const optState = {};   // 键: 频道id\x01选项 → { miss, pen }；存内存，重开归零
+function parseOpt(s) {
+  const h = s[0];
+  if (h === '+') return { text: s.slice(1).trim(), tag: 'fav' };
+  if (h === '-') return { text: s.slice(1).trim(), tag: 'bad' };
+  return { text: s.trim(), tag: '' };
+}
+function optStateFor(chId, text) {
+  const k = chId + '\x01' + text;
+  return (optState[k] = optState[k] || { miss: 0, pen: 1 });
+}
+function pickOption(chId, items) {
+  const sts = items.map(it => optStateFor(chId, it.text));
+  const w = items.map((it, i) => {
+    if (it.tag === 'fav') return 1 + 0.2 * Math.floor(sts[i].miss / 5);
+    if (it.tag === 'bad') return Math.max(0.05, sts[i].pen);
+    return 1;
+  });
+  let total = w.reduce((a, b) => a + b, 0), r = Math.random() * total, idx = 0;
+  for (; idx < w.length; idx++) if ((r -= w[idx]) < 0) break;
+  idx = Math.min(idx, items.length - 1);
+  items.forEach((it, i) => {
+    const st = sts[i];
+    if (i === idx) {
+      if (it.tag === 'fav') st.miss = 0;
+      if (it.tag === 'bad') st.pen = Math.max(0.2, st.pen * 0.8);
+    } else {
+      if (it.tag === 'fav') st.miss++;
+      if (it.tag === 'bad') st.pen = Math.min(1, st.pen * 1.15);
+    }
+  });
+  return items[idx];
+}
+
 // ===== 抽签 / 抽选（通用：求签 or 列表）=====
 function draw() {
   if (rolling) return;
@@ -574,14 +625,16 @@ function draw() {
   // 构造滚动池 + 结果
   let pool, result;
   if (ch.type === 'fortune') {
-    pool = FORTUNES.map(f => ({ text: f.level, color: f.color }));
+    pool = FORTUNES.map(f => ({ text: fLevel(f), color: f.color }));
     const f = weightedFortune();
-    result = { text: f.level, color: f.color, note: rand(f.phrases) };
+    result = { text: fLevel(f), color: f.color, note: fPhrase(f) };
   } else {
-    const opts = (ch.options && ch.options.length) ? ch.options : ['（空）'];
+    const raw = (ch.options && ch.options.length) ? ch.options : ['（空）'];
     const c = phosphor();
-    pool = opts.map(o => ({ text: o, color: c }));
-    result = { text: rand(opts), color: c, note: ch.note || '就这个！' };
+    const items = raw.map(parseOpt);
+    const r = pickOption(ch.id, items);
+    pool = items.map(it => ({ text: it.text, color: c }));
+    result = { text: r.text, color: c, note: ch.note || (lang === 'en' ? 'This one!' : '就这个！') };
   }
 
   rolling = true;
@@ -632,7 +685,7 @@ function lockResult(result) {
   phrase.style.color = result.color;
   setTimeout(() => { phrase.style.opacity = 0.95; }, 250);
 
-  hint.textContent = '再抽一次 ↻';
+  hint.textContent = T.again;
   hint.style.opacity = 0.55;
 }
 
@@ -656,7 +709,7 @@ function switchChannel(delta) {
   screen.classList.add('rolling');
   beep(180, 0.05, 'sawtooth', 0.03);
   setTimeout(() => screen.classList.remove('rolling'), 220);
-  showBanner(curChannel().name, goIdle);
+  showBanner(chName(curChannel()), goIdle);
 }
 
 // 🍅 专属按钮：进入番茄钟（全屏启动 3s 再缩到右上角）；已在番茄钟则返回原频道
@@ -677,7 +730,7 @@ function togglePomodoro() {
     persist();
     updateLabel();
     updatePomoBtn();
-    showBanner(curChannel().name, goIdle);
+    showBanner(chName(curChannel()), goIdle);
     return;
   }
 
@@ -707,7 +760,7 @@ function switchTheme(delta) {
   beep(440, 0.05, 'triangle', 0.03);
   if (!showingResult) reel.style.color = phosphor();
   // 主题名出现在表情位置，消失后表情再显现（待机态则刷新表情颜色）
-  showBanner(THEMES[config.theme].name, () => {
+  showBanner(themeNameOf(allThemes()[config.theme]), () => {
     if (!rolling && !showingResult) reel.style.color = phosphor();
   });
 }
@@ -800,6 +853,7 @@ if (window.tvapi && window.tvapi.onConfigChanged) {
     config = cfg;
     ensureBuiltins(config);
     config.customThemes = config.customThemes || [];
+    setLang(config.lang);
     config.current = clamp(config.current || 0, 0, config.channels.length - 1);
     config.theme = clamp(config.theme || 0, 0, allThemes().length - 1);
     applyTheme(config.theme);
@@ -837,6 +891,7 @@ async function init() {
     config = cfg;
   }
   config.customThemes = config.customThemes || [];
+  setLang(config.lang);
   const before = config.channels.length;
   ensureBuiltins(config);              // 老配置迁移：补上「番茄钟」等内置频道
   if (config.channels.length !== before || !cfg) persist();

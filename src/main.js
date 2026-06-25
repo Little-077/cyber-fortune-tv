@@ -50,7 +50,7 @@ function broadcastConfig(cfg, exceptWC) {
 const BASE_W = 384;   // 略宽，给机身右侧凸起按钮留出空间
 const MIN_SCALE = 0.45;
 const MAX_SCALE = 1.8;
-let scale = 0.8;               // 默认略小一点（之前“好大一个”）
+let scale = 0.64;              // 初始尺寸（原 0.8 的 80%）
 let lastContentH = 360;        // 渲染进程上报的整机高度（含天线），用于贴合窗口
 
 function createWindow() {
@@ -107,8 +107,8 @@ function openSettings() {
     return;
   }
   settingsWin = new BrowserWindow({
-    width: 480,
-    height: 600,
+    width: 482,            // 黄金比例：宽 = 0.618 × 高
+    height: 780,
     title: '赛博抽抽机 · 设置',
     resizable: true,
     minimizable: true,
@@ -134,10 +134,16 @@ ipcMain.on('theme:preview', (_e, obj) => {
   if (win && !win.isDestroyed()) win.webContents.send('theme:preview', obj);
 });
 
+// 开机启动（默认开）
+function applyAutoLaunch(on) {
+  try { app.setLoginItemSettings({ openAtLogin: on !== false }); } catch (e) { /* ignore */ }
+}
+
 ipcMain.handle('config:get', () => readConfig());
 ipcMain.on('config:save', (e, cfg) => {
   if (!cfg) return;
   writeConfig(cfg);
+  applyAutoLaunch(cfg.autoLaunch);
   broadcastConfig(cfg, e.sender);   // 通知其它窗口热更新（不回发给保存者）
 });
 
@@ -203,6 +209,7 @@ app.whenReady().then(() => {
 
   createWindow();
   startStatusServer();           // 启动 Claude Code 状态接收服务
+  { const c = readConfig(); applyAutoLaunch(c ? c.autoLaunch : true); }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
