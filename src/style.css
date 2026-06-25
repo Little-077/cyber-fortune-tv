@@ -30,6 +30,7 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
+  position: relative;   /* 完成时星星定位在这一层（电视屏幕之外）*/
 }
 
 /* ===== 整台电视（可拖动移动窗口）===== */
@@ -104,6 +105,9 @@ html, body {
 .antenna.happy .pivot-right  { animation-duration: 1.5s; }
 .antenna.sleepy .pivot-left,
 .antenna.sleepy .pivot-right { animation-duration: 6s; }
+/* Claude 工作中：天线忙碌地中速摆动 */
+.antenna.busy .pivot-left,
+.antenna.busy .pivot-right   { animation-duration: 0.7s; }
 
 /* ===== 电视外壳 ===== */
 .tv-body {
@@ -452,6 +456,139 @@ html, body {
   50% { transform: translateY(-3px); }
 }
 .reel.idle { animation: float 2.4s ease-in-out infinite; }
+
+/* ===== Claude 完成：欢快蹦跳 + 天线一收一开，循环 3 遍 + 星星 ===== */
+/* 一个循环 ≈ 0.42s：一次蹦跳 + 左右小倾斜 */
+@keyframes tvHop {
+  0%,100% { transform: translateY(0)    rotate(0deg); }
+  28%     { transform: translateY(-13px) rotate(-6deg); }
+  56%     { transform: translateY(-4px)  rotate(6deg); }
+  80%     { transform: translateY(-1px)  rotate(-2deg); }
+}
+.tv.hop { animation: tvHop 0.42s ease-in-out 6; }   /* 蹦跳 6 遍 */
+/* 天线随每次蹦跳「收起 → 打开」：从正常 ±18° 收到近乎并拢 ±2° 再回弹 */
+@keyframes antPinchL {
+  0%,100% { transform: rotate(-18deg) translateX(-2px); }
+  45%     { transform: rotate(-2deg)  translateX(-2px); }
+}
+@keyframes antPinchR {
+  0%,100% { transform: rotate(18deg) translateX(2px); }
+  45%     { transform: rotate(2deg)  translateX(2px); }
+}
+.antenna.hop .pivot-left  { animation: antPinchL 0.42s ease-in-out 6 !important; }
+.antenna.hop .pivot-right { animation: antPinchR 0.42s ease-in-out 6 !important; }
+/* 庆祝星星 */
+.star {
+  position: absolute;
+  z-index: 6;
+  font-size: 15px;
+  pointer-events: none;
+  opacity: 0;
+  animation: starPop 0.9s ease-out forwards;
+}
+@keyframes starPop {
+  0%   { opacity: 0; transform: scale(0.3) translateY(5px); }
+  40%  { opacity: 1; transform: scale(1.2) translateY(0); }
+  100% { opacity: 0; transform: scale(0.9) translateY(-9px); }
+}
+
+/* 工作中：一支像素笔在写字 */
+.writer { display: none; position: relative; width: 104px; height: 46px; image-rendering: pixelated; }
+.writer.show { display: block; }
+/* 写出来的墨线 */
+.writer .ink {
+  position: absolute; left: 8px; bottom: 12px;
+  height: 3px; width: 2px;
+  background: var(--phosphor);
+  box-shadow: 0 0 5px var(--phosphor);
+  animation: inkGrow 1.7s ease-in-out infinite;
+}
+/* 笔（笔帽+笔身+笔尖），整体倾斜，沿行从左写到右 */
+.writer .pen {
+  position: absolute; left: 2px; bottom: 12px;
+  width: 8px; height: 30px;
+  transform-origin: bottom center;
+  animation: penMove 1.7s ease-in-out infinite;
+}
+.writer .cap   { position: absolute; top: 0;   left: 0; width: 8px; height: 5px; background: #7CC8FC; }
+.writer .shaft { position: absolute; top: 5px; left: 0; width: 8px; height: 21px; background: #F2C84B; box-shadow: inset -2px 0 0 #c89a26; }
+.writer .nib   { position: absolute; bottom: -5px; left: 1px; width: 0; height: 0;
+  border-left: 3px solid transparent; border-right: 3px solid transparent; border-top: 6px solid #2b2b2b; }
+@keyframes penMove {
+  0%   { transform: translateX(0)   rotate(32deg); }
+  20%  { transform: translateX(18px) rotate(29deg); }
+  40%  { transform: translateX(36px) rotate(33deg); }
+  60%  { transform: translateX(54px) rotate(29deg); }
+  82%  { transform: translateX(74px) rotate(33deg); }
+  88%  { transform: translateX(74px) rotate(32deg); }
+  100% { transform: translateX(0)   rotate(32deg); }
+}
+@keyframes inkGrow {
+  0%   { width: 2px; }
+  82%  { width: 80px; }
+  88%  { width: 80px; }
+  100% { width: 2px; }
+}
+
+/* 等待：像素风眼睛，眼珠左右转 */
+.eyes { display: none; gap: 16px; align-items: center; justify-content: center; }
+.eyes.show { display: flex; }
+.eye {
+  position: relative;
+  width: 32px; height: 36px;
+  background: var(--phosphor);
+  border-radius: 7px;
+  box-shadow: 0 0 8px var(--phosphor);
+  image-rendering: pixelated;
+}
+.pupil {
+  position: absolute; top: 12px; left: 10px;
+  width: 12px; height: 12px;
+  background: #08110f;
+  border-radius: 2px;
+  animation: lookLR 2.4s ease-in-out infinite;
+}
+@keyframes lookLR { 0%,100% { transform: translateX(-6px); } 50% { transform: translateX(6px); } }
+
+/* 番茄钟迷你条：与 Claude 并存时，倒计时缩到屏幕顶部右侧 */
+.pomo-mini {
+  position: absolute;
+  top: 5px; right: 8px;
+  z-index: 5;
+  font-size: 11px;
+  letter-spacing: 1px;
+  white-space: nowrap;
+  color: var(--phosphor);
+  text-shadow: 0 0 4px currentColor;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s;
+}
+.pomo-mini.show { opacity: 0.85; }
+
+/* ===== Claude Code 状态角标 ===== */
+.claude-badge {
+  position: absolute;
+  top: 5px; right: 8px;
+  z-index: 6;
+  font-size: 17px;
+  line-height: 1;
+  opacity: 0;
+  pointer-events: none;
+  filter: drop-shadow(0 0 4px var(--phosphor));
+  transition: opacity 0.2s;
+}
+.claude-badge.show { opacity: 0.4; animation: none; }
+/* 工作中：慢速翻转的沙漏（不闪烁）*/
+.claude-badge.working { opacity: 0.95; animation: hourFlip 2s ease-in-out infinite; }
+@keyframes hourFlip {
+  0%, 38%  { transform: rotate(0deg); }
+  50%, 88% { transform: rotate(180deg); }
+  100%     { transform: rotate(360deg); }
+}
+.claude-badge.waiting.show { opacity: 1; animation: cbPulse 0.6s ease-in-out infinite; }
+.claude-badge.done { animation: none; opacity: 1; filter: drop-shadow(0 0 5px #9BE86C); }
+@keyframes cbPulse { 0%,100% { transform: scale(1); opacity: 0.5; } 50% { transform: scale(1.25); opacity: 1; } }
 
 /* ===== 心情：犯困 / 睡着 / 惊醒 的明显视觉 ===== */
 /* 屏幕亮度：犯困先暗一档，睡着更暗 */

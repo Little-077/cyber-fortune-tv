@@ -35,6 +35,11 @@ const knobChannel = document.getElementById('knobChannel');
 const knobTheme   = document.getElementById('knobTheme');
 const crtContent = document.getElementById('crtContent');
 const pomoBtn    = document.getElementById('pomoBtn');
+const claudeBadge = document.getElementById('claudeBadge');
+const eyes = document.getElementById('eyes');
+const writer = document.getElementById('writer');
+const pomoMini = document.getElementById('pomoMini');
+const stage = document.querySelector('.stage');
 
 let config = defaultConfig();
 let rolling = false;
@@ -48,8 +53,13 @@ let faceTick = 0;
 
 // 番茄钟状态（全局：切台也继续走，到点提醒）
 let pomo = { phase: 'idle', remain: 0, running: false, timer: null };
+let pomoFullUntil = 0;   // 在此时间戳前，番茄钟强制全屏（即使 Claude 在忙）
+function pomoFullActive() { return Date.now() < pomoFullUntil; }
 // 庆祝状态
 let celebrating = false, celebrateTimer = null, celebrateEnd = null;
+// Claude Code 状态：'idle' | 'working' | 'waiting'
+let claudeState = 'idle';
+let workDots = 0;
 
 // 天线伸缩状态（px）：可拉得很长（约 5 倍）
 const ROD_MIN = 40, ROD_MAX = 420, ROD_LUCK_FROM = 130;
@@ -226,6 +236,8 @@ function applyMoodFace() {
 }
 function idleTick() {
   if (rolling || showingResult || celebrating) return;
+  if (curChannel().type === 'pomodoro' && pomoFullActive()) { renderPomo(); return; }   // 番茄钟全屏 3s 优先
+  if (claudeState !== 'idle') { claudeScreen(); updatePomoMini(); return; }   // Claude 占主屏（任意频道）
   if (curChannel().type === 'pomodoro') return;
   if (pomo.running) lastActive = Date.now();
   const mood = moodNow();
@@ -279,9 +291,25 @@ function fmtTime(sec) {
   const m = Math.floor(sec / 60), s = sec % 60;
   return `${m}:${String(s).padStart(2, '0')}`;
 }
+// 顶部迷你倒计时（与 Claude 并存时用）
+function pomoMiniText() {
+  return (pomo.phase === 'break' ? '☕ ' : '🍅 ') + fmtTime(pomo.remain);
+}
+function updatePomoMini() {
+  const show = pomo.running && claudeState !== 'idle' && !pomoFullActive();
+  pomoMini.classList.toggle('show', show);
+  if (show) pomoMini.textContent = pomoMiniText();
+}
+// 每秒刷新：全屏期 or Claude 空闲→在番茄钟频道画大倒计时；否则只更新顶部迷你条
+function pomoTickRender() {
+  updatePomoMini();
+  if (curChannel().type === 'pomodoro' && (claudeState === 'idle' || pomoFullActive())) renderPomo();
+}
 function renderPomo() {
   if (curChannel().type !== 'pomodoro') return;
+  if (claudeState !== 'idle' && !pomoFullActive()) { updatePomoMini(); return; }   // Claude 占主屏：倒计时走顶部迷你条
   clearInterval(idleTimer);
+  clearClaudeScreen();
   antenna.classList.remove('happy', 'sleepy'); antenna.classList.add('idle');
   screen.classList.remove('dim');
   reel.classList.remove('kaomoji', 'idle');
@@ -300,10 +328,10 @@ function renderPomo() {
 }
 function pomoRun() {
   clearInterval(pomo.timer);
-  renderPomo();
+  pomoTickRender();
   pomo.timer = setInterval(() => {
     pomo.remain--;
-    renderPomo();
+    pomoTickRender();
     if (pomo.remain <= 0) {
       clearInterval(pomo.timer);
       pomo.running = false;
@@ -321,13 +349,14 @@ function pomoStartPhase(phase) {
 }
 function pomoToggle() {
   if (pomo.phase === 'idle') { pomoStartPhase('focus'); return; }
-  if (pomo.running) { pomo.running = false; clearInterval(pomo.timer); beep(300, 0.05, 'sine', 0.04); renderPomo(); }
+  if (pomo.running) { pomo.running = false; clearInterval(pomo.timer); beep(300, 0.05, 'sine', 0.04); pomoTickRender(); }
   else { pomo.running = true; beep(500, 0.05, 'sine', 0.04); pomoRun(); }
 }
 function pomoReset() {
   clearInterval(pomo.timer);
   pomo = { phase: 'idle', remain: 0, running: false, timer: null };
   beep(220, 0.06, 'sawtooth', 0.03);
+  updatePomoMini();   // 隐藏迷你条
   renderPomo();
 }
 // 到点庆祝：欢快音 + 全屏闪 + 整机抖 + 天线乱晃 + 撒花
@@ -397,11 +426,123 @@ function pomoComplete(phase) {
   });
 }
 
+// ===== Claude Code 状态 =====
+// 能否占主屏：仅在非番茄钟频道、且没在抽签/出结果/庆祝时
+function claudeTakeoverOk() {
+  return claudeState !== 'idle' && !rolling && !showingResult && !celebrating;
+}
+function updateClaudeBadge() {
+  // 工作/等待都用屏幕画面表现，不用角标；角标只在完成时显示 ✓
+  claudeBadge.classList.remove('show', 'working', 'waiting', 'done');
+}
+// 清掉 Claude 占屏的元素（笔/眼睛），恢复普通显示
+function clearClaudeScreen() {
+  eyes.classList.remove('show');
+  writer.classList.remove('show');
+  reel.style.display = '';
+  reel.classList.remove('writing');
+}
+// Claude 占主屏：working = 像素笔写字；waiting = 像素眼睛
+function claudeScreen() {
+  antenna.classList.remove('happy', 'sleepy');
+  antenna.classList.add('idle', 'busy');
+  screen.classList.remove('dim', 'drowsy');
+  phrase.style.opacity = 0;
+  reel.style.display = 'none';
+  if (claudeState === 'waiting') {
+    writer.classList.remove('show');
+    eyes.classList.add('show');
+    hint.textContent = 'Claude 等你确认…';
+  } else {
+    eyes.classList.remove('show');
+    writer.classList.add('show');
+    hint.textContent = 'Claude 工作中…';
+  }
+  hint.style.opacity = 0.8;
+}
+function setClaudeState(s) {
+  claudeState = s;             // 'working' | 'waiting'
+  lastActive = Date.now();     // 工作期间不犯困/睡着
+  updateClaudeBadge();
+  if (claudeTakeoverOk()) { claudeScreen(); }
+  updatePomoMini();            // 番茄钟在跑则把倒计时缩到顶部条
+}
+function claudeDone() {
+  claudeState = 'idle';
+  lastActive = Date.now();
+  clearInterval(idleTimer);
+  antenna.classList.remove('busy', 'happy', 'sleepy');
+  clearClaudeScreen();           // 先清掉写字笔/等待眼睛，确保显示开心颜文字
+  updateClaudeBadge();
+  updatePomoMini();              // Claude 结束→隐藏顶部条（倒计时回大屏由后续恢复）
+
+  chime();
+  // 整机蹦跳+左右倾斜，天线随每跳一收一开（3 遍）+ 撒星星
+  tv.classList.remove('hop'); void tv.offsetWidth; tv.classList.add('hop');
+  antenna.classList.remove('idle'); antenna.classList.add('hop');
+  spawnStars();
+  // 角标 ✓
+  claudeBadge.textContent = '✓';
+  claudeBadge.classList.add('show', 'done');
+
+  if (curChannel().type === 'pomodoro') {
+    renderPomo();                    // 番茄钟优先：只蹦跳+叮，倒计时不被盖
+  } else if (!rolling && !showingResult && !celebrating) {
+    // 屏幕显示开心脸 + ✓ 完成
+    reel.classList.remove('sleeping'); reel.classList.add('idle', 'kaomoji');
+    reel.style.fontSize = ''; reel.style.color = phosphor();
+    reel.textContent = '＾▽＾';
+    screen.classList.remove('dim', 'drowsy');
+    phrase.style.opacity = 0;
+    hint.textContent = '✓ 完成！'; hint.style.opacity = 0.85;
+  }
+
+  clearTimeout(claudeDone._t);
+  claudeDone._t = setTimeout(() => {
+    tv.classList.remove('hop');
+    antenna.classList.remove('hop');
+    antenna.classList.add('idle');
+    claudeBadge.classList.remove('show', 'done');
+    if (claudeState === 'idle' && !rolling && !showingResult && !celebrating) {
+      if (curChannel().type === 'pomodoro') renderPomo(); else goIdle();
+    }
+  }, 2700);   // 6 × 0.42s ≈ 2.52s + 缓冲
+}
+
+// 完成时在屏幕里撒一圈星星
+function spawnStars() {
+  // 撒在整机外围（.stage 层，不被屏幕裁切）
+  for (let i = 0; i < 14; i++) {
+    const s = document.createElement('div');
+    s.className = 'star';
+    s.textContent = '✨';
+    s.style.left = (2 + Math.random() * 92) + '%';
+    s.style.top = (2 + Math.random() * 90) + '%';
+    s.style.animationDelay = (Math.random() * 2) + 's';
+    stage.appendChild(s);
+    setTimeout(() => s.remove(), 3000);
+  }
+}
+
 // ===== 待机：番茄钟频道显示计时；其它频道显示心情表情 =====
 function goIdle() {
   rolling = false;
   showingResult = false;
   updatePomoBtn();
+  clearClaudeScreen();
+  if (curChannel().type === 'pomodoro' && pomoFullActive()) {   // 番茄钟全屏 3s 优先
+    clearInterval(idleTimer);
+    renderPomo();
+    return;
+  }
+  if (claudeState !== 'idle') {       // Claude 占主屏（任意频道）：主屏给 Claude，倒计时进顶部条
+    clearInterval(idleTimer);
+    claudeScreen();
+    updatePomoMini();
+    idleTimer = setInterval(idleTick, 1000);
+    return;
+  }
+  updatePomoMini();                   // Claude 空闲：隐藏顶部条
   if (curChannel().type === 'pomodoro') { clearInterval(idleTimer); renderPomo(); return; }
   reel.classList.add('idle', 'kaomoji');
   antenna.classList.add('idle');
@@ -427,6 +568,7 @@ function ensureBuiltins(cfg) {
 // ===== 抽签 / 抽选（通用：求签 or 列表）=====
 function draw() {
   if (rolling) return;
+  clearClaudeScreen();
   const ch = curChannel();
 
   // 构造滚动池 + 结果
@@ -517,28 +659,41 @@ function switchChannel(delta) {
   showBanner(curChannel().name, goIdle);
 }
 
-// 🍅 专属按钮：一键进入番茄钟；再按返回原频道
+// 🍅 专属按钮：进入番茄钟（全屏启动 3s 再缩到右上角）；已在番茄钟则返回原频道
 function togglePomodoro() {
   if (celebrating) endCelebrate();
   markActive();
   const pi = config.channels.findIndex(c => c.type === 'pomodoro');
   if (pi < 0 || rolling) return;
+  beep(660, 0.05, 'sine', 0.04);
+
   if (curChannel().type === 'pomodoro') {
+    // 退出 → 回上一个频道
     let back = clamp(prevChannel, 0, config.channels.length - 1);
     if (!config.channels[back] || config.channels[back].type === 'pomodoro') back = rotatables()[0] ?? 0;
     config.current = back;
+    pomoFullUntil = 0;
     syncKnobs();
-  } else {
-    prevChannel = config.current;
-    config.current = pi;
+    persist();
+    updateLabel();
+    updatePomoBtn();
+    showBanner(curChannel().name, goIdle);
+    return;
   }
+
+  // 进入 → 启动 + 全屏 3 秒，再缩到右上角（即使 Claude 在忙也先全屏出现）
+  prevChannel = config.current;
+  config.current = pi;
   persist();
   updateLabel();
-  updatePomoBtn();               // 进/出番茄钟 → 侧键自锁/弹起
-  beep(660, 0.05, 'sine', 0.04);
-  screen.classList.add('rolling');
-  setTimeout(() => screen.classList.remove('rolling'), 200);
-  showBanner(curChannel().name, goIdle);
+  updatePomoBtn();
+  pomoFullUntil = Date.now() + 3000;
+  if (pomo.phase === 'idle') pomoStartPhase('focus');   // 启动专注计时
+  else pomoTickRender();
+  clearClaudeScreen();
+  renderPomo();                                         // 全屏大倒计时
+  clearTimeout(togglePomodoro._t);
+  togglePomodoro._t = setTimeout(() => { pomoFullUntil = 0; goIdle(); }, 3000);
 }
 function switchTheme(delta) {
   if (celebrating) endCelebrate();
@@ -600,7 +755,7 @@ window.addEventListener('keydown', (e) => {
 // ===== 天线：上下拖动伸缩 + 通知主进程贴合窗口高度 =====
 function requestFit() {
   if (!window.tvapi || !window.tvapi.fit) return;
-  const h = Math.ceil(tv.getBoundingClientRect().height) + 16;
+  const h = Math.ceil(tv.getBoundingClientRect().height) + 76;  // 上下留余量，给完成时蹦跳/倾斜不被裁
   window.tvapi.fit(h);
 }
 function setRodLen(px) {
@@ -658,6 +813,14 @@ if (window.tvapi && window.tvapi.onThemePreview) {
   window.tvapi.onThemePreview((obj) => {
     applyThemeObj(obj);
     if (!rolling && !showingResult) reel.style.color = phosphor();
+  });
+}
+
+// Claude Code 状态：working / waiting 进入对应状态；done 弹完成提醒
+if (window.tvapi && window.tvapi.onClaudeState) {
+  window.tvapi.onClaudeState((s) => {
+    if (s === 'done') claudeDone();
+    else setClaudeState(s);
   });
 }
 

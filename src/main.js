@@ -1,6 +1,25 @@
 const { app, BrowserWindow, Menu, ipcMain, screen } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const http = require('http');
+
+// 本地状态服务：Claude Code 的 hooks 用 curl 通知小电视
+// /working 工作中 · /done 完成 · /waiting 等你确认
+const STATUS_PORT = 51789;
+function startStatusServer() {
+  const server = http.createServer((req, res) => {
+    const u = (req.url || '').toLowerCase();
+    let state = null;
+    if (u.startsWith('/working')) state = 'working';
+    else if (u.startsWith('/done')) state = 'done';
+    else if (u.startsWith('/waiting')) state = 'waiting';
+    if (state && win && !win.isDestroyed()) win.webContents.send('claude:state', state);
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('ok');
+  });
+  server.on('error', () => { /* 端口占用等忽略 */ });
+  server.listen(STATUS_PORT, '127.0.0.1');
+}
 
 // 应用名（菜单栏显示「赛博抽抽机」而非「Electron」）
 app.setName('赛博抽抽机');
@@ -183,6 +202,7 @@ app.whenReady().then(() => {
   }
 
   createWindow();
+  startStatusServer();           // 启动 Claude Code 状态接收服务
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

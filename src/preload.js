@@ -16,6 +16,8 @@ contextBridge.exposeInMainWorld('tvapi', {
   // DIY 外观实时预览（不落盘）
   previewTheme: (obj) => ipcRenderer.send('theme:preview', obj),
   onThemePreview: (cb) => ipcRenderer.on('theme:preview', (_e, obj) => cb(obj)),
+  // Claude Code 状态：working / done / waiting
+  onClaudeState: (cb) => ipcRenderer.on('claude:state', (_e, s) => cb(s)),
 
   // 标记当前是否运行在 Electron 里（浏览器预览时为 false）
   isElectron: true,
