@@ -6,6 +6,12 @@ let lang = 'zh';
 let T = I18N.zh;
 function setLang(l) { lang = (l === 'en') ? 'en' : 'zh'; T = I18N[lang]; }
 function fLevel(f) { return lang === 'en' ? f.levelEn : f.level; }
+// 英文等级若是两个词，拆成上下两行（更大更清晰）
+function levelDisplay(f) {
+  const s = fLevel(f);
+  return (lang === 'en' && s.includes(' ')) ? s.replace(/ /g, '\n') : s;
+}
+function longestLine(s) { return s.split('\n').reduce((a, l) => chars(l) > chars(a) ? l : a, ''); }
 function fPhrase(f) { return rand(lang === 'en' ? f.phrasesEn : f.phrases); }
 function themeNameOf(t) { return (lang === 'en' && t.nameEn) ? t.nameEn : t.name; }
 function chName(ch) {
@@ -562,6 +568,7 @@ function goIdle() {
   reel.classList.add('idle', 'kaomoji');
   antenna.classList.add('idle');
   reel.style.fontSize = '';            // 交回 .kaomoji 的字号
+  reel.style.whiteSpace = ''; reel.style.lineHeight = '';
   phrase.style.opacity = 0;
   hint.style.opacity = 0.55;
   powerBtn.classList.remove('on');
@@ -625,9 +632,9 @@ function draw() {
   // 构造滚动池 + 结果
   let pool, result;
   if (ch.type === 'fortune') {
-    pool = FORTUNES.map(f => ({ text: fLevel(f), color: f.color }));
+    pool = FORTUNES.map(f => ({ text: levelDisplay(f), color: f.color }));
     const f = weightedFortune();
-    result = { text: fLevel(f), color: f.color, note: fPhrase(f) };
+    result = { text: levelDisplay(f), color: f.color, note: lang === 'en' ? '' : fPhrase(f) };
   } else {
     const raw = (ch.options && ch.options.length) ? ch.options : ['（空）'];
     const c = phosphor();
@@ -654,7 +661,10 @@ function draw() {
   function tick() {
     const elapsed = Date.now() - startTime;
     const item = rand(pool);
-    reel.style.fontSize = '36px';
+    const ml = item.text.includes('\n');
+    reel.style.whiteSpace = ml ? 'pre-line' : 'nowrap';
+    reel.style.lineHeight = ml ? '1.05' : '';
+    reel.style.fontSize = ml ? '28px' : '36px';
     reel.textContent = item.text;
     reel.style.color = item.color;
     beep(220 + Math.random() * 600, 0.02, 'square', 0.02);
@@ -672,7 +682,10 @@ function lockResult(result) {
   tv.classList.remove('rolling');
   screen.classList.remove('rolling');
 
-  reel.style.fontSize = sizeFor(result.text) + 'px';
+  const ml = result.text.includes('\n');
+  reel.style.whiteSpace = ml ? 'pre-line' : 'nowrap';
+  reel.style.lineHeight = ml ? '1.05' : '';
+  reel.style.fontSize = sizeFor(longestLine(result.text)) + 'px';
   reel.textContent = result.text;
   reel.style.color = result.color;
 
@@ -681,9 +694,13 @@ function lockResult(result) {
   screen.classList.add('flash');
   chime();
 
-  phrase.textContent = result.note;
-  phrase.style.color = result.color;
-  setTimeout(() => { phrase.style.opacity = 0.95; }, 250);
+  if (result.note) {
+    phrase.textContent = result.note;
+    phrase.style.color = result.color;
+    setTimeout(() => { phrase.style.opacity = 0.95; }, 250);
+  } else {
+    phrase.style.opacity = 0;
+  }
 
   hint.textContent = T.again;
   hint.style.opacity = 0.55;
