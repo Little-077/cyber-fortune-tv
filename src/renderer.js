@@ -887,11 +887,18 @@ if (window.tvapi && window.tvapi.onThemePreview) {
   });
 }
 
-// Claude Code 状态：working / waiting 进入对应状态；done 弹完成提醒
+// Claude Code 状态：working/waiting 立即进入；done 防抖
+// （Cowork 每步都会频繁触发，若紧接着又有 working/waiting，则视为仍在进行，不弹完成）
+let doneTimer = null;
 if (window.tvapi && window.tvapi.onClaudeState) {
   window.tvapi.onClaudeState((s) => {
-    if (s === 'done') claudeDone();
-    else setClaudeState(s);
+    if (s === 'done') {
+      clearTimeout(doneTimer);
+      doneTimer = setTimeout(() => { doneTimer = null; claudeDone(); }, 1200);
+    } else {
+      clearTimeout(doneTimer); doneTimer = null;   // 又开始动了 → 取消待发的完成
+      setClaudeState(s);
+    }
   });
 }
 
