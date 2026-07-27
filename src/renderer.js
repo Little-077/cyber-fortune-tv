@@ -890,6 +890,7 @@ if (window.tvapi && window.tvapi.onThemePreview) {
 // Claude Code 状态：working/waiting 立即进入；done 防抖
 // （Cowork 每步都会频繁触发，若紧接着又有 working/waiting，则视为仍在进行，不弹完成）
 let doneTimer = null;
+let lastWorkAt = 0;                 // 最近一次收到 working 心跳的时间
 if (window.tvapi && window.tvapi.onClaudeState) {
   window.tvapi.onClaudeState((s) => {
     if (s === 'done') {
@@ -897,10 +898,34 @@ if (window.tvapi && window.tvapi.onClaudeState) {
       doneTimer = setTimeout(() => { doneTimer = null; claudeDone(); }, 1200);
     } else {
       clearTimeout(doneTimer); doneTimer = null;   // 又开始动了 → 取消待发的完成
+      if (s === 'working') { lastWorkAt = Date.now(); writer.classList.remove('paused'); }
       setClaudeState(s);
     }
   });
 }
+
+// 安静回到待机（用户按暂停/打断时用，不放叮/蹦跳/✓，只是恢复正常屏）
+function claudeIdleQuiet() {
+  claudeState = 'idle';
+  lastActive = Date.now();
+  antenna.classList.remove('busy', 'happy', 'sleepy');
+  writer.classList.remove('paused');
+  clearClaudeScreen();
+  updateClaudeBadge();
+  updatePomoMini();
+  if (curChannel().type === 'pomodoro') renderPomo(); else goIdle();
+}
+
+// 静默看门狗：按暂停/打断时 Claude Code 不一定触发 Stop hook，
+// 于是一直停在 working、笔不停。收不到心跳 → 先停笔，再收笔回正常。
+const WORK_FREEZE_MS = 6000;    // 6s 无心跳 → 笔停下
+const WORK_CLEAR_MS  = 20000;   // 20s 无心跳 → 收笔回正常
+setInterval(() => {
+  if (claudeState !== 'working' || !lastWorkAt) return;
+  const idle = Date.now() - lastWorkAt;
+  if (idle >= WORK_CLEAR_MS) claudeIdleQuiet();
+  else if (idle >= WORK_FREEZE_MS) writer.classList.add('paused');
+}, 1000);
 
 // ===== 启动 =====
 async function init() {

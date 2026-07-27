@@ -529,6 +529,9 @@ html, body {
   88%  { width: 80px; }
   100% { width: 2px; }
 }
+/* 暂停/打断：静默一段时间后先让笔停下（冻结写字动画） */
+.writer.paused .pen,
+.writer.paused .ink { animation-play-state: paused; }
 
 /* 等待：像素风眼睛，眼珠左右转 */
 .eyes { display: none; gap: 16px; align-items: center; justify-content: center; }
