@@ -91,6 +91,7 @@ function createWindow() {
   // 内容加载后套用初始缩放，让整机视觉与窗口一致
   win.webContents.on('did-finish-load', () => {
     win.webContents.setZoomFactor(scale);
+    win.show();                  // 保险：内容加载完必显示
   });
 
   // 关闭电视主窗口 = 退出整个应用
@@ -180,11 +181,6 @@ ipcMain.on('win:fit', (_e, contentH) => {
 });
 
 app.whenReady().then(() => {
-  // 运行时 Dock 图标也用电视图标
-  if (process.platform === 'darwin' && app.dock) {
-    app.dock.setIcon(path.join(__dirname, 'icon.png'));
-  }
-
   // macOS 顶部菜单：保留 Cmd+Q / Cmd+W 等快捷键
   if (process.platform === 'darwin') {
     const template = [
@@ -210,6 +206,11 @@ app.whenReady().then(() => {
   createWindow();
   startStatusServer();           // 启动 Claude Code 状态接收服务
   { const c = readConfig(); applyAutoLaunch(c ? c.autoLaunch : true); }
+
+  // 运行时 Dock 图标（放在 createWindow 之后并容错：asar 内路径可能失败，不能因此中断启动）
+  if (process.platform === 'darwin' && app.dock) {
+    try { app.dock.setIcon(path.join(__dirname, 'icon.png')); } catch (e) { /* 忽略，bundle 图标已够用 */ }
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

@@ -1,6 +1,6 @@
 {
   "name": "cyber-fortune-tv",
-  "version": "1.3.2",
+  "version": "1.3.3",
   "description": "赛博抽抽机 — 复古像素电视抽签 / 万能随机决定器 (Electron)",
   "main": "src/main.js",
   "author": "LAZY_M",
@@ -18,6 +18,7 @@
   "build": {
     "appId": "com.lamecat.cyberfortunetv",
     "productName": "赛博抽抽机",
+    "afterPack": "build/afterPack.js",
     "artifactName": "${name}-${version}-${os}.${ext}",
     "files": [
       "src/**/*"
